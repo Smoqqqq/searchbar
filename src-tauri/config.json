@@ -1,0 +1,8 @@
+{
+    "include_dirs": [
+        "C:\\Program Files"
+    ],
+    "exclude_dirs": [
+       "C:\\Program Files\\Zotero"
+    ]
+}
