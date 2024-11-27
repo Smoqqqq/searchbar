@@ -1,7 +1,16 @@
-# Tauri + React + Typescript
+# Search bar
+Search bar application written in Rust.
 
-This template should help get you started developing with Tauri, React and Typescript in Vite.
+## Starting the app
+Use the `ctrl+space` shortcut to open the UI
 
-## Recommended IDE Setup
+## Hiding the app
+The searchbar will automatically hide when either:
+* selecting a search result
+* pressing `escape`
+* using the `ctrl+space` shortcut
 
-- [VS Code](https://code.visualstudio.com/) + [Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode) + [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer)
+## Navigating search results
+Select (launch) a search result by:
+* clicking it
+* selecting it with the keyboard (`tab`, `shift+tab`, `arrow down`, `arrow up`) and pressing `enter`

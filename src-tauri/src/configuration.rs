@@ -8,8 +8,16 @@ pub struct Configuration {
     pub entries: HashMap<String, ConfigurationValue>,
 }
 
+impl Configuration {
+    pub(crate) fn clone(&self) -> Configuration {
+        Configuration {
+            entries: self.entries.clone(),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
-pub enum ConfigurationValue {
+pub(crate) enum ConfigurationValue {
     String(String),
     Integer(i32),
     Float(f32),
@@ -58,8 +66,6 @@ impl Configuration {
                 error
             ),
         }
-
-        dbg!(&string_buffer);
 
         let config: Value = serde_json::from_str(&string_buffer)?;
 

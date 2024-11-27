@@ -13,8 +13,23 @@
         "windows": [
             {
                 "title": "searchbar",
-                "width": 800,
-                "height": 600
+                "width": 600,
+                "minWidth": 300,
+                "height": 53,
+                "minHeight": 53,
+                "x": 100,
+                "y": 100,
+                "focus": true,
+                "acceptFirstMouse": true,
+                "hiddenTitle": true,
+                "alwaysOnTop": true,
+                "transparent": true,
+                "resizable": false,
+                "closable": false,
+                "minimizable": false,
+                "maximizable": false,
+                "visible": false,
+                "skipTaskbar": true
             }
         ],
         "security": {

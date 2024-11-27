@@ -1,38 +1,104 @@
+@font-face {
+    font-family: 'Roboto';
+    src: url('./assets/fonts/Roboto-Regular.ttf') format('truetype');
+}
+
 body {
-    font-family: 'Arial', sans-serif;
+    font-family: 'Roboto', sans-serif;
     margin: 0;
-    padding: 0;
+    padding: 53px 0 30px 0;
     background-color: #2d2d2d;
     overflow: hidden;
 }
 
 #search-input {
     padding: 15px 10px;
-    font-size: 18px;
+    font-size: 20px;
     width: 100%;
     margin: 0;
     border: none;
     outline: none;
-    background: rgba(255, 255, 255, 0.05);
+    background: #3d3d3d;
     color: white;
+    position: fixed;
+    top: 0;
+    left: 0;
+    z-index: 99;
 }
 
 .info-message {
     color: white;
-    font-size: 18px;
-    text-align: center;
-    margin-top: 20px;
+    font-style: italic;
+    font-size: 14px;
+    margin: 0;
+    padding: 5px;
+    line-height: 20px;
+    position: fixed;
+    right: 0;
+    bottom: 0;
+    width: 100%;
+    text-align: right;
+    background: #2d2d2d;
+
+    &.d-none {
+        display: none;
+    }
 }
 
 .search-result {
-    padding: 10px;
+    box-sizing: border-box;
+    display: flex;
+    padding: 5px;
     cursor: pointer;
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    margin: 3px;
-    font-size: 14px;
-    color: white;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    height: 63px;
+    max-height: 63px;
+    overflow: hidden;
+    text-wrap: nowrap;
+    text-overflow: ellipsis;
 
-    &:hover {
+    .icon {
+        display: grid;
+        place-items: center;
+        font-size: 16px;
+        width: 50px;
+        height: 50px;
+        min-width: 50px;
+        border-radius: 5px;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        margin-right: 10px;
+        color: #b1b1b1
+    }
+
+    .body {
+        width: 100%;
+        padding: 5px 0;
+        position: relative;
+        max-width: calc(100% - 62px);
+
+        .name {
+            font-size: 18px;
+            color: white;
+        }
+
+        .path {
+            max-width: 90%;
+            font-size: 14px;
+            margin-top: 3px;
+            color: rgba(255, 255, 255, 0.5);
+            overflow: hidden;
+            text-wrap: nowrap;
+            text-overflow: ellipsis;
+        }
+
+        .result-from-cache {
+            position: absolute;
+            right: 5px;
+            top: 5px;
+        }
+    }
+
+    &:hover, &.focused {
         background: rgba(255, 255, 255, 0.1);
     }
 }
