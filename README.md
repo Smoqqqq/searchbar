@@ -14,3 +14,6 @@ The searchbar will automatically hide when either:
 Select (launch) a search result by:
 * clicking it
 * selecting it with the keyboard (`tab`, `shift+tab`, `arrow down`, `arrow up`) and pressing `enter`
+
+## Information on launching files
+When launching a file, program or folder, your operating system handles starting the app. To change the way the app is started (in what program), modify your OS file associations.

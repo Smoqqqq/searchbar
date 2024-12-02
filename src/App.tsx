@@ -1,4 +1,4 @@
-import {MutableRefObject, useEffect, useRef, useState} from "react";
+import {useEffect, useRef, useState} from "react";
 import {invoke} from "@tauri-apps/api/core";
 import "./App.css";
 import {isRegistered, register} from "@tauri-apps/plugin-global-shortcut";
@@ -9,44 +9,62 @@ import {
     PhysicalSize
 } from "@tauri-apps/api/window";
 
-interface SearchResult {
-    filename: string,
-    filepath: string,
-    filetype: string,
-    isFromCache: null | boolean
+interface FileSystemEntry {
+    path: string,
+    name: string,
+    is_dir: boolean,
 }
 
 function App() {
+    const [fileSystemMapped, setFileSystemMapped] = useState(false);
     const [infoMessage, setInfoMessage] = useState("");
     const [filename, setFilename] = useState("");
-    const [results, setResults] = useState<SearchResult[]>([]);
-    const [focusedIndex, setFocusedIndex] = useState(-1);
+    const [results, setResults] = useState<FileSystemEntry[]>([]);
+    const [focusedIndex, setFocusedIndex] = useState(0);
     const searchResultContainerRef = useRef<HTMLDivElement | null>(null);
-    const [searchInputRef, setFocus] = useFocus<HTMLInputElement | null>();
+    const searchInputRef = useRef(null);
     const dNone = infoMessage.length === 0 ? 'd-none' : '';
+    const [page, setPage] = useState(0);
+    const [searching, setSearching] = useState(false);
+    const [reachedBottom, setReachedBottom] = useState(false);
 
     useEffect(() => {
-        if (filename !== '') {
-            searchFromCache();
-        } else {
-            setInfoMessage('');
-            setFocusedIndex(-1);
-            resizeWindowToFitContent(0, false);
+        if (!fileSystemMapped) {
+            console.error("FileSystem not mapped.")
+            return;
         }
+
+        // A ref to store the timeout ID
+        const debounceTimer = setTimeout(() => {
+            setReachedBottom(false);
+            setPage(0);
+            setFocusedIndex(0);
+
+            if (filename !== '') {
+                search(); // Trigger the search function
+                resizeWindowToFitContent(0, true);
+            } else {
+                setResults([]);
+                setInfoMessage('');
+                resizeWindowToFitContent(0, false);
+            }
+        }, 10); // Wait 500ms after the user stops typing
+
+        // Cleanup the timeout on each new keystroke
+        return () => clearTimeout(debounceTimer);
     }, [filename]);
 
-    async function launch(result: SearchResult) {
+    async function launch(result: FileSystemEntry) {
         setFilename('');
         setResults([]);
         setInfoMessage('');
-        setFocusedIndex(-1);
+        setFocusedIndex(0);
 
-        await invoke("launch", {filepath: result.filepath});
+        await invoke("launch", {filepath: result.path});
         await hideWindow();
     }
 
     async function hideWindow() {
-        console.log('hideWindow')
         setResults([]);
         setInfoMessage('');
         setFilename('');
@@ -56,7 +74,7 @@ function App() {
 
         await mainWindow.setSize(new PhysicalSize({
             width: 600,
-            height: searchInputSize
+            height: searchInputSize + 30
         }))
         await mainWindow.hide();
     }
@@ -75,8 +93,9 @@ function App() {
         await invoke("click_window");
 
         setResults([]);
-        setInfoMessage('');
         setFilename('');
+
+        mapFileSystem();
     }
 
     useEffect(() => {
@@ -99,23 +118,54 @@ function App() {
         };
 
         registerShortCuts();
-        setFocus();
     }, []);
+
+    async function mapFileSystem() {
+        // If filesystem is already mapped, skip the mapping and return early.
+        if (fileSystemMapped) {
+            console.log('Filesystem already mapped. Skipping...');
+            return;
+        }
+
+        // Set the loading message immediately when mapping starts.
+        setInfoMessage('Mapping filesystem. Go grab a coffee, this will take a few minutes...');
+        await resizeWindowToFitContent(0, true)
+
+        try {
+            const startTime = Date.now();
+            const response = await invoke('map_filesystem');
+
+            if (response === 'Already mapped') {
+                setInfoMessage('');
+                await resizeWindowToFitContent(0, false)
+            } else {
+                const endTime = Date.now();
+                const duration = ((endTime - startTime) / 1000).toFixed(1)
+                setInfoMessage('Finished mapping filesystem in ' + duration + 's');
+            }
+
+            // Mark the filesystem as mapped after the operation is complete.
+            setFileSystemMapped(true);
+        } catch (error) {
+            console.error("Error during filesystem mapping:", error);
+            setInfoMessage('Sorry, we failed to map filesystem. Please restart app and try again');
+        }
+    }
 
     function handleUserKeyPress(e: KeyboardEvent) {
         if (e.key === 'ArrowDown' || e.key === 'Tab' && !e.getModifierState('Alt') && !e.getModifierState('Shift')) {
             e.preventDefault();
-            if (focusedIndex < results.length-1) {
+            if (focusedIndex < results.length - 1) {
                 let index = focusedIndex + 1;
                 setFocusedIndex(index);
-                searchResultContainerRef.current?.scrollTo({ left: 0, top: (index-4)*63, behavior: "smooth" })
+                searchResultContainerRef.current?.scrollTo({left: 0, top: (index - 4) * 63, behavior: "smooth"})
             }
         } else if (e.key === 'ArrowUp' || e.key === 'Tab' && !e.getModifierState('Alt') && e.getModifierState('Shift')) {
             e.preventDefault();
             if (focusedIndex > 0) {
                 let index = focusedIndex - 1;
                 setFocusedIndex(index);
-                searchResultContainerRef.current?.scrollTo({ left: 0, top: (index-4)*63, behavior: "smooth" })
+                searchResultContainerRef.current?.scrollTo({left: 0, top: (index - 4) * 63, behavior: "smooth"})
             }
         } else if (e.key === 'Enter' && focusedIndex >= 0) {
             launch(results[focusedIndex]);
@@ -124,12 +174,20 @@ function App() {
         }
     }
 
+    // useEffect(() => {
+    //     window.addEventListener('blur', hideWindow);
+    //     return () => {
+    //         window.removeEventListener('blur', hideWindow);
+    //     }
+    // }, [hideWindow]);
+
     useEffect(() => {
-        window.addEventListener('blur', hideWindow);
+        searchResultContainerRef.current?.addEventListener('scroll', searchMoreResults);
+
         return () => {
-            window.removeEventListener('blur', hideWindow);
+            searchResultContainerRef.current?.removeEventListener('scroll', searchMoreResults)
         }
-    }, [hideWindow]);
+    }, [searchMoreResults])
 
     useEffect(() => {
         window.addEventListener("keydown", handleUserKeyPress);
@@ -138,8 +196,58 @@ function App() {
         };
     }, [handleUserKeyPress]);
 
-    async function resizeWindowToFitContent(nbItems: false | number = false, infoMessage: boolean) {
-        nbItems = nbItems ? nbItems : results.length;
+    const performSearch = async (currentResults: FileSystemEntry[] = [], newPage = page) => {
+        const startTime = Date.now();
+        setSearching(true);
+        setReachedBottom(false);
+
+        try {
+            const response = await invoke("search", { filename, page: newPage });
+            const responseData = JSON.parse(response as string);
+            const items = responseData.results.Vec as FileSystemEntry[];
+            const endTime = Date.now();
+            const duration = ((endTime - startTime) / 1000).toFixed(1);
+
+            const allResults = [...currentResults, ...items];
+            setResults(allResults);
+            setInfoMessage(`${responseData.count.U32} results for "${filename}" (${duration}s)`);
+
+            setSearching(false);
+            if (allResults.length >= responseData.count.U32) {
+                setReachedBottom(true);
+            }
+
+            await resizeWindowToFitContent(allResults.length, true);
+        } catch (error) {
+            console.error("Error during search:", error);
+            setInfoMessage('Failed to search for files.');
+            setSearching(false);
+        }
+    };
+
+    async function search() {
+        if (!fileSystemMapped) {
+            console.error("FS mapping in progress.");
+            return;
+        }
+
+        setResults([]);
+        setInfoMessage('Searching for "' + filename + '"...');
+        await performSearch([], 0)
+    }
+
+    async function searchMoreResults() {
+        if (searchResultContainerRef.current && !searching && !reachedBottom) {
+            if (searchResultContainerRef.current.scrollTop > searchResultContainerRef.current.scrollHeight - searchResultContainerRef.current.getBoundingClientRect().height * 1.5) {
+                setInfoMessage('Searching more results matching "' + filename + '"...');
+                setPage(page + 1);
+
+                await performSearch(results, page+1)
+            }
+        }
+    }
+
+    async function resizeWindowToFitContent(nbItems: number, infoMessage: boolean) {
         const itemHeight = 63;
         const maxNbItems = 8;
 
@@ -148,7 +256,7 @@ function App() {
 
         const container = searchResultContainerRef.current;
         if (container) {
-            const searchResultContainerHeight = (Math.min(maxNbItems, nbItems) * itemHeight);
+            const searchResultContainerHeight = (Math.min(maxNbItems, nbItems + (reachedBottom ? 1 : 0)) * itemHeight);
             const mainWindow = getCurrentWindow();
             const width = await mainWindow.innerSize(); // Set a fixed or desired width.
 
@@ -166,66 +274,8 @@ function App() {
 
             // Adjust the window size
             await mainWindow.setSize(new PhysicalSize(size));
+            console.log("resized window : " + nbItems + " items, " + (infoMessage ? 'true' : 'false') + ' infoMessage ')
         }
-    }
-
-    async function searchFromCache() {
-        setInfoMessage('Searching for "' + filename + '" in the cache...');
-
-        await invoke("search_from_cache", {filename: filename})
-            .then(response => response as string)
-            .then(response => JSON.parse(response) as SearchResult[])
-            .then(async (response) => {
-                const cacheSortedResults = response.sort((a, b) => {
-                    const aIsExe = a.filename.endsWith(".exe") ? -1 : 0;
-                    const bIsExe = b.filename.endsWith(".exe") ? 0 : -1;
-                    return bIsExe - aIsExe || a.filename.localeCompare(b.filename);
-                });
-
-                response.forEach(result => result.isFromCache = true);
-
-                setResults(cacheSortedResults);
-                setInfoMessage(cacheSortedResults.length + ' results for "' + filename + '" from cache.');
-                await resizeWindowToFitContent(cacheSortedResults.length, true)
-            })
-    }
-
-    async function searchFileSystem() {
-        const startTime = Date.now();
-        setInfoMessage('Searching for "' + filename + '" in the filesystem...');
-        invoke("search", {filename: filename})
-            .then(response => response as string)
-            .then(response => JSON.parse(response) as SearchResult[])
-            .then(async (response) => {
-                const sortedResults = response.sort((a, b) => {
-                    const aIsExe = a.filename.endsWith(".exe") ? -1 : 0;
-                    const bIsExe = b.filename.endsWith(".exe") ? 0 : -1;
-                    return bIsExe - aIsExe || a.filename.localeCompare(b.filename);
-                });
-
-                const endTime = Date.now();
-                const duration = ((endTime - startTime)/1000).toFixed(1)
-                setResults(sortedResults);
-                setInfoMessage(sortedResults.length + ' results for "' + filename + '" (' + duration + 's)');
-                await resizeWindowToFitContent(sortedResults.length, true);
-            });
-    }
-
-    async function search() {
-        setResults([]);
-
-        setInfoMessage('Searching for "' + filename + '"...');
-
-        const searchInputSize = searchInputRef.current ? searchInputRef.current.clientHeight : 53;
-        const mainWindow = getCurrentWindow();
-        await mainWindow.setSize(new PhysicalSize({
-            width: 600,
-            height: searchInputSize + 30
-        }))
-        await searchFromCache()
-            .then(() => {
-                searchFileSystem();
-            })
     }
 
     return (
@@ -234,7 +284,6 @@ function App() {
                 className="row"
                 onSubmit={(e) => {
                     e.preventDefault();
-                    search();
                 }}
             >
                 <input
@@ -252,8 +301,20 @@ function App() {
                 <div ref={searchResultContainerRef}>
                     {
                         results.map((item, index) => (
-                            <SearchResultComponent key={index} result={item} launch={launch} focused={index === focusedIndex}/>
+                            <FileSystemEntryComponent key={index} result={item} launch={launch}
+                                                      focused={index === focusedIndex} index={index} setFocusedIndex={setFocusedIndex} />
                         ))
+                    }
+                    {
+                        reachedBottom ? <>
+                            <div className="search-result">
+                                <div className="icon" style={{fontSize: 80/5}}>Done!</div>
+                                <div className="body">
+                                    <div className="name">You've reached the end.</div>
+                                    <div className="path">Try searching for something else !</div>
+                                </div>
+                            </div>
+                        </> : <></>
                     }
                 </div>
             </div>
@@ -261,15 +322,21 @@ function App() {
     );
 }
 
-function SearchResultComponent({result, launch, focused}: { result: SearchResult, launch: (result: SearchResult) => {}, focused: boolean }) {
+function FileSystemEntryComponent({result, launch, focused, index, setFocusedIndex}: {
+    result: FileSystemEntry,
+    launch: (result: FileSystemEntry) => {},
+    focused: boolean,
+    index: number,
+    setFocusedIndex: (index: number) => {}
+}) {
     function launchProgram() {
         launch(result);
     }
 
-    let extension = result.filename.split('.').pop();
+    let extension = result.name.split('.').pop();
     extension = extension ? extension : "";
 
-    let icon = result.filetype === "file" ? <>{extension}</> :
+    let icon = !result.is_dir ? <>{extension}</> :
         <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" className="bi bi-folder"
              viewBox="0 0 16 16">
             <path
@@ -277,39 +344,18 @@ function SearchResultComponent({result, launch, focused}: { result: SearchResult
         </svg>;
 
 
-    let fontSize = result.filetype === "file" ? 80 / extension.length : 20;
+    let fontSize = !result.is_dir ? 80 / extension.length : 20;
     fontSize = Math.min(fontSize, 20);
 
-    let cacheIcon = result.isFromCache ?
-        <span title="This result commes from the cache" className="result-from-cache"><svg
-            xmlns="http://www.w3.org/2000/svg" width="16" height="16"
-            fill="currentColor" className="bi bi-database"
-            viewBox="0 0 16 16">
-            <path
-                d="M4.318 2.687C5.234 2.271 6.536 2 8 2s2.766.27 3.682.687C12.644 3.125 13 3.627 13 4c0 .374-.356.875-1.318 1.313C10.766 5.729 9.464 6 8 6s-2.766-.27-3.682-.687C3.356 4.875 3 4.373 3 4c0-.374.356-.875 1.318-1.313M13 5.698V7c0 .374-.356.875-1.318 1.313C10.766 8.729 9.464 9 8 9s-2.766-.27-3.682-.687C3.356 7.875 3 7.373 3 7V5.698c.271.202.58.378.904.525C4.978 6.711 6.427 7 8 7s3.022-.289 4.096-.777A5 5 0 0 0 13 5.698M14 4c0-1.007-.875-1.755-1.904-2.223C11.022 1.289 9.573 1 8 1s-3.022.289-4.096.777C2.875 2.245 2 2.993 2 4v9c0 1.007.875 1.755 1.904 2.223C4.978 15.71 6.427 16 8 16s3.022-.289 4.096-.777C13.125 14.755 14 14.007 14 13zm-1 4.698V10c0 .374-.356.875-1.318 1.313C10.766 11.729 9.464 12 8 12s-2.766-.27-3.682-.687C3.356 10.875 3 10.373 3 10V8.698c.271.202.58.378.904.525C4.978 9.71 6.427 10 8 10s3.022-.289 4.096-.777A5 5 0 0 0 13 8.698m0 3V13c0 .374-.356.875-1.318 1.313C10.766 14.729 9.464 15 8 15s-2.766-.27-3.682-.687C3.356 13.875 3 13.373 3 13v-1.302c.271.202.58.378.904.525C4.978 12.71 6.427 13 8 13s3.022-.289 4.096-.777c.324-.147.633-.323.904-.525"/>
-        </svg></span> : ''
-
     return (
-        <div onClick={launchProgram} className={"search-result " + (focused ? 'focused' : '')}>
+        <div onClick={launchProgram} className={"search-result " + (focused ? 'focused' : '')} onMouseEnter={() => { setFocusedIndex(index) }}>
             <div className="icon" style={{fontSize: fontSize}}>{icon}</div>
             <div className="body">
-                <div className="name">{result.filename} {cacheIcon}</div>
-                <div className="path">{result.filepath}</div>
+                <div className="name">{result.name}</div>
+                <div className="path">{result.path}</div>
             </div>
         </div>
     );
-}
-
-function useFocus<T>(defaultRef: any = null): [MutableRefObject<T>, () => void] {
-    const htmlElRef = useRef(defaultRef)
-    const setFocus = () => {
-        if (htmlElRef.current) {
-            htmlElRef.current.focus();
-            htmlElRef.current.click();
-        }
-    }
-
-    return [htmlElRef, setFocus]
 }
 
 export default App;

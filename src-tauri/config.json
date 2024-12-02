@@ -3,6 +3,7 @@
         "C:\\Program Files"
     ],
     "exclude_dirs": [
-       "C:\\Program Files\\Zotero"
+        "C:\\Program Files\\Zotero",
+        "C:\\Users\\Paul\\AppData"
     ]
 }
